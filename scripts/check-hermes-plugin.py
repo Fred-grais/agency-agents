@@ -100,6 +100,20 @@ def main() -> int:
             slugs = [result["slug"] for result in found["results"]]
             assert expected in slugs, f"search {query!r} should surface {expected}, got {slugs}"
 
+            # They delegate coding to Claude Code; the loaded prompt must carry
+            # the standing invocation flags verbatim.
+            loaded = json.loads(
+                ctx.tools["agency_agents_load"]["handler"]({"slug": expected})
+            )
+            assert loaded["success"] is True
+            prompt = loaded["prompt"]
+            assert "## 🤖 Claude Code Delegation" in prompt, (
+                f"{expected}: loaded prompt is missing the Claude Code Delegation section"
+            )
+            assert "--model claude-opus-5-5 --effort medium --dangerously-skip-permissions" in prompt, (
+                f"{expected}: loaded prompt is missing the standing Claude Code flags"
+            )
+
         slug = search["results"][0]["slug"]
         inspected = json.loads(
             ctx.tools["agency_agents_inspect"]["handler"]({"slug": slug})
