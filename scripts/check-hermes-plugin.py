@@ -89,6 +89,17 @@ def main() -> int:
         assert search["success"] is True
         assert search["results"], "search should return at least one specialist"
 
+        # Framework specialists must be reachable by the plain framework name.
+        for query, expected in (
+            ("ruby on rails", "ruby-on-rails-expert"),
+            ("nuxt", "nuxt-js-expert"),
+        ):
+            found = json.loads(
+                ctx.tools["agency_agents_search"]["handler"]({"query": query, "limit": 3})
+            )
+            slugs = [result["slug"] for result in found["results"]]
+            assert expected in slugs, f"search {query!r} should surface {expected}, got {slugs}"
+
         slug = search["results"][0]["slug"]
         inspected = json.loads(
             ctx.tools["agency_agents_inspect"]["handler"]({"slug": slug})
