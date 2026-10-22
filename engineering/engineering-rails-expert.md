@@ -97,13 +97,14 @@ class ProjectsController < ApplicationController
   private
     # Scoped lookup: another user's id raises RecordNotFound (404), not a data leak.
     def set_project
-      @project = Current.user.projects.find(params.expect(:id))
+      @project = Current.user.projects.find(params[:id])
     end
 
-    # Rails 8+: params.expect rejects malformed shapes with 400 instead of 500.
-    # On Rails 7.x use params.require(:project).permit(:name, :description, :due_on).
+    # Works on Rails 7.1–8.x. On Rails 8+ prefer params.expect, which rejects
+    # malformed shapes with 400 instead of 500:
+    #   params.expect(project: %i[name description due_on])
     def project_params
-      params.expect(project: %i[name description due_on])
+      params.require(:project).permit(:name, :description, :due_on)
     end
 end
 ```
@@ -145,7 +146,9 @@ class AddIndexOnOrdersCustomerId < ActiveRecord::Migration[8.0]
   disable_ddl_transaction!
 
   def change
-    add_index :orders, :customer_id, algorithm: :concurrently, if_not_exists: true
+    # No if_not_exists: a failed concurrent build leaves an INVALID index under this
+    # name, and if_not_exists would silently skip it. Let the retry fail loudly.
+    add_index :orders, :customer_id, algorithm: :concurrently
   end
 end
 
@@ -161,6 +164,8 @@ class BackfillOrderTotalsJob < ApplicationJob
 end
 ```
 
+If a concurrent build fails (deadlock, statement timeout, duplicate key on a unique index), PostgreSQL keeps the half-built index marked INVALID: it is maintained on every write but never used by the planner. Before retrying, find it with `SELECT indexrelid::regclass FROM pg_index WHERE NOT indisvalid;`, drop it with `DROP INDEX CONCURRENTLY <name>;` (or `remove_index ..., algorithm: :concurrently` in a migration), then rerun the migration.
+
 ### Idempotent job enqueued after commit
 
 ```ruby
@@ -175,14 +180,20 @@ class SendReceiptJob < ApplicationJob
   discard_on ActiveJob::DeserializationError # record deleted before the job ran
 
   def perform(order)
-    # Idempotency guard: retries and duplicate deliveries must not send twice.
-    return if order.receipt_sent_at?
+    # with_lock reloads the row under SELECT ... FOR UPDATE, so two workers running
+    # the same job serialize: the second blocks until the first commits, then sees
+    # receipt_sent_at and exits. A plain check-then-send would let both send.
+    order.with_lock do
+      next if order.receipt_sent_at?
 
-    OrderMailer.receipt(order).deliver_now
-    order.update!(receipt_sent_at: Time.current)
+      OrderMailer.receipt(order).deliver_now # raises → transaction rolls back → retry
+      order.update!(receipt_sent_at: Time.current)
+    end
   end
 end
 ```
+
+The row lock is held for the duration of the send, so keep SMTP/API timeouts short. One gap remains: if the provider accepts the message and the commit then fails, the retry sends again. Close it with the provider's idempotency key (e.g. `"order-receipt-#{order.id}"`) where supported, or accept at-least-once for receipts and use the same lock-plus-marker pattern for side effects that must be exactly-once.
 
 ### N+1 prevention that fails loudly
 
