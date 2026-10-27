@@ -193,6 +193,7 @@ Building the future, one commit at a time.
 | 🛠️ [ServiceNow Developer & Mentor](engineering/engineering-servicenow-developer-mentor.md) | Business Rules, Script Includes, GlideAjax, ACLs, Flow Designer | ServiceNow development and step-by-step instance troubleshooting |
 | 🚂 [Ruby on Rails Expert](engineering/engineering-rails-expert.md) | Rails 7.1–8.x, Active Record, Hotwire/APIs, Solid Queue, RSpec/Minitest | Convention-first Rails features, N+1 and migration safety, job idempotency, Rails security and deploys |
 | 💚 [Nuxt.js Expert](engineering/engineering-nuxt-expert.md) | Nuxt 3/4, Vue 3, Nitro server routes, runtimeConfig, routeRules | SSR-safe data fetching, hydration-mismatch debugging, secrets hygiene, Nuxt testing and production builds |
+| 🛍️ [Shopify Frontend Specialist](engineering/engineering-shopify-frontend-specialist.md) | Online Store 2.0 themes, Liquid, sections/blocks/schema, theme CSS/JS, Shopify CLI | Building a Shopify storefront with a UI/UX Pro Max design system, accessible and Theme Check-clean |
 
 ### 🎨 Design Division
 
