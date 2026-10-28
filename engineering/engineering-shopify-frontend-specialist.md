@@ -104,6 +104,25 @@ Name the skills in every task prompt so Claude Code loads them:
 
 A full template or storefront build will outlast a single terminal call. Start the same `claude -p ... --output-format json` command as a background process with the host's background-terminal facility, or a named `tmux` session if the host has none. Redirect output to a log file outside the theme repository so it is never committed or pushed. Poll for process exit at intervals that fit the task instead of killing slow runs. When it exits, read `subtype` and `session_id` from the log, resume if the run was cut short, and clean up the session.
 
+### When you run as a time-boxed delegate
+
+If you were invoked through a bounded delegation (for example the Agency router's `agency_agents_delegate`, which cancels the specialist after about five minutes), you cannot wait for a build. Any dispatch expected to take more than a couple of minutes must be handed off, not run in the foreground:
+
+1. Start it **detached** so it survives the end of your delegation, writing the result and a PID file outside the theme repo:
+
+   ```bash
+   cd <theme-repo-root> && JOB=<state-dir>/<task-slug>-$(date +%Y%m%d-%H%M%S) && \
+   setsid nohup claude -p "$(cat "$JOB.prompt.md")" \
+     --model claude-opus-5-5 --effort medium --dangerously-skip-permissions \
+     --max-turns <n> --output-format json > "$JOB.result.json" 2> "$JOB.stderr.log" < /dev/null & \
+   echo $! > "$JOB.pid"
+   ```
+
+   Write the task prompt to `$JOB.prompt.md` first, so the prompt never sits in the command line or shell history.
+2. Confirm it started: the PID is alive (`kill -0 $(cat "$JOB.pid")`) and the stderr log shows no immediate error.
+3. Return immediately with a **handoff** your caller can act on: the job path (`$JOB`), PID, working directory, target theme, `--max-turns`, and these instructions. The job is finished when the PID is gone. Read `subtype` and `session_id` from `$JOB.result.json`, resume with `--resume <session_id>` and the standing flags if `subtype` is `error_max_turns`, then run the verification and push steps from this brief.
+4. Never launch a second job for the same task while one is running. Check for a live PID first.
+
 ### Report back
 
 - **On dispatch:** the exact command with its prompt summarized, the working directory, the target theme, the background session or log, and the `session_id` once known.
