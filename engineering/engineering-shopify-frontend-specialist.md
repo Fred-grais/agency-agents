@@ -108,20 +108,17 @@ A full template or storefront build will outlast a single terminal call. Start t
 
 If you were invoked through a bounded delegation (for example the Agency router's `agency_agents_delegate`, which cancels the specialist after about five minutes), you cannot wait for a build. Any dispatch expected to take more than a couple of minutes must be handed off, not run in the foreground:
 
-1. Start it **detached** so it survives the end of your delegation, writing the result and a PID file outside the theme repo:
+1. Pick a job path once, `JOB=<state-dir>/<task-slug>-<YYYYmmdd-HHMMSS>`, and write the task prompt to `$JOB.prompt.md` with a file-writing tool, so the prompt never sits in a command line or shell history.
+2. Start it **detached** with this exact launcher, as one foreground terminal command. It is POSIX `sh`-safe, so don't swap in bash-only syntax such as `$(<file)`, which expands to an empty prompt under `sh`:
 
-   ```bash
-   cd <theme-repo-root> && JOB=<state-dir>/<task-slug>-$(date +%Y%m%d-%H%M%S) && \
-   setsid nohup claude -p "$(cat "$JOB.prompt.md")" \
-     --model claude-opus-5-5 --effort medium --dangerously-skip-permissions \
-     --max-turns <n> --output-format json > "$JOB.result.json" 2> "$JOB.stderr.log" < /dev/null & \
-   echo $! > "$JOB.pid"
+   ```sh
+   JOB=<state-dir>/<task-slug>-<YYYYmmdd-HHMMSS>; cd <theme-repo-root> && { setsid nohup sh -c 'exec claude -p "$(cat "$1.prompt.md")" --model claude-opus-5-5 --effort medium --dangerously-skip-permissions --max-turns <n> --output-format json > "$1.result.json" 2> "$1.stderr.log" < /dev/null' sh "$JOB" > /dev/null 2>&1 & echo $! > "$JOB.pid"; }
    ```
 
-   Write the task prompt to `$JOB.prompt.md` first, so the prompt never sits in the command line or shell history.
-2. Confirm it started: the PID is alive (`kill -0 $(cat "$JOB.pid")`) and the stderr log shows no immediate error.
-3. Return immediately with a **handoff** your caller can act on: the job path (`$JOB`), PID, working directory, target theme, `--max-turns`, and these instructions. The job is finished when the PID is gone. Read `subtype` and `session_id` from `$JOB.result.json`, resume with `--resume <session_id>` and the standing flags if `subtype` is `error_max_turns`, then run the verification and push steps from this brief.
-4. Never launch a second job for the same task while one is running. Check for a live PID first.
+   `setsid` gives the job its own session, so it outlives your delegation. The PID file holds Claude Code's own PID. **Do not** use the host's background-process facility (a `background: true` terminal call or its process registry) for this: those processes belong to your delegation and are killed when it ends.
+3. Confirm it started: about 10 seconds later, the PID is alive (`kill -0 "$(cat "$JOB.pid")"`) and `$JOB.stderr.log` is empty. If not, read the log, fix the cause, and relaunch once.
+4. Return immediately with a **handoff** your caller can act on: the job path (`$JOB`), PID, working directory, target theme, `--max-turns`, and these instructions. The job is finished when the PID is gone. Read `subtype` and `session_id` from `$JOB.result.json`, resume with `--resume <session_id>` and the standing flags if `subtype` is `error_max_turns`, then run the verification and push steps from this brief.
+5. Never launch a second job for the same task while one is running. Check for a live PID first.
 
 ### Report back
 
